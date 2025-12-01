@@ -1,0 +1,95 @@
+
+script to handle the additional requirements:
+
+Send an email when disk utilization exceeds 80%.
+Send another email when disk utilization exceeds 85%.
+Send a final email after the cleanup if the disk utilization is still above the threshold or if it has successfully reduced below the threshold.
+
+#!/bin/bash
+
+# Configuration
+THRESHOLD1=80
+THRESHOLD2=85
+DIRECTORY="/path/to/directory"
+EMAIL="youremail@example.com"
+HOSTNAME=$(hostname)
+
+# Function to get current disk usage
+get_disk_usage() {
+    df / | grep / | awk '{ print $5 }' | sed 's/%//g'
+}
+
+# Function to send email with disk usage details
+send_email() {
+    local subject="$1"
+    local body="$2"
+    echo -e "$body" | mail -s "$subject" $EMAIL
+}
+
+# Function to clean up files older than 7 days in the specified directory
+cleanup() {
+    echo "Cleaning up files older than 7 days in $DIRECTORY..."
+    find $DIRECTORY -type f -mtime +7 -exec rm -f {} \;
+    echo "Cleanup completed."
+}
+
+# Check current disk usage
+USAGE=$(get_disk_usage)
+
+# Email details for initial warning
+SUBJECT1="Disk Utilization Warning on $HOSTNAME"
+BODY1=$(df -h)
+BODY1+="\n\nFile sizes in $DIRECTORY:\n"
+BODY1+=$(du -ah $DIRECTORY | sort -rh)
+
+# Email details for critical warning
+SUBJECT2="Critical Disk Utilization Alert on $HOSTNAME"
+BODY2=$(df -h)
+BODY2+="\n\nFile sizes in $DIRECTORY:\n"
+BODY2+=$(du -ah $DIRECTORY | sort -rh)
+
+# Email details after cleanup
+SUBJECT3="Disk Utilization Status on $HOSTNAME after Cleanup"
+
+# Check if usage exceeds the first threshold
+if [ "$USAGE" -gt "$THRESHOLD1" ]; then
+    send_email "$SUBJECT1" "$BODY1"
+    
+    # Check if usage exceeds the second threshold
+    if [ "$USAGE" -gt "$THRESHOLD2" ]; then
+        send_email "$SUBJECT2" "$BODY2"
+    fi
+
+    # Perform cleanup
+    cleanup
+    
+    # Recheck usage after cleanup
+    USAGE=$(get_disk_usage)
+    BODY3="Current disk usage after cleanup: ${USAGE}%\n"
+    BODY3+="\nFile system details:\n"
+    BODY3+=$(df -h)
+    
+    if [ "$USAGE" -gt "$THRESHOLD1" ]; then
+        BODY3+="\nWarning: Disk usage is still above ${THRESHOLD1}% after cleanup. Manual intervention required."
+    else
+        BODY3+="\nSuccess: Disk usage is now below ${THRESHOLD1}%."
+    fi
+    
+    send_email "$SUBJECT3" "$BODY3"
+else
+    echo "Disk usage is under control. No action needed."
+fi
+
+# Log the activity
+echo "$(date): Disk utilization check completed. Current usage: $USAGE%" >> /var/log/disk_cleanup.log
+
+
+
+
+Important Notes:-
+
+Adjust Cleanup Actions: Modify the cleanup function to suit your environment. Be careful with automated deletions.
+Logging: The script logs its actions to /var/log/disk_cleanup.log.
+Notifications: The script sends emails at different thresholds and after cleanup to keep you informed.
+This script provides a comprehensive solution for monitoring disk usage, sending alerts at different thresholds, and cleaning up old files automatically.
+Customize it to fit the specific needs and policies of your environment.
